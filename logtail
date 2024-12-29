@@ -1,0 +1,104 @@
+#!/bin/bash
+
+#
+# logtail - Tail an nginx access log and remember the last read offset, so we
+# can start reading from that point next.
+#
+# Written assuming this script runs minutely. Liberties taken.
+#
+
+ACCESS_LOG="/var/log/nginx/access.log"
+# /var/log/nginx/access.log -> _var_log_nginx_access_log
+# shellcheck disable=SC2001
+NORMALIZED_ACCESS_LOG=$(echo "${ACCESS_LOG}" | sed -e 's![/\.]!_!g')
+OFFSET_ROOT="/var/cache/ops"
+ACCESS_LOG_OFFSET="${OFFSET_ROOT}/offset${NORMALIZED_ACCESS_LOG}"
+
+# Write to stderr.
+_stderr () {
+  # ISO8601 timestamp, precision in seconds.
+  _now=$(date -Iseconds)
+  >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
+}
+
+prep () {
+  if [ ! -d "${OFFSET_ROOT}" ]; then
+    _stderr "Creating directory ${OFFSET_ROOT}"
+    mkdir -p "${OFFSET_ROOT}"
+  fi
+}
+
+log_file_present () {
+  test -f "${ACCESS_LOG}"
+}
+
+offset_file_present () {
+  test -f "${ACCESS_LOG_OFFSET}"
+}
+
+_current_offset () {
+  offset=0
+  if log_file_present; then
+    offset="$(wc -c ${ACCESS_LOG} | awk '{print $1}')"
+  fi
+  echo "${offset}"
+}
+
+_previous_offset () {
+  offset=0
+  if offset_file_present; then
+    offset=$(tr -d '\n' < "${ACCESS_LOG_OFFSET}")
+  fi
+  echo "${offset}"
+}
+
+CURRENT_OFFSET="$(_current_offset)"
+PREVIOUS_OFFSET=$(_previous_offset)
+
+save_offset () {
+  local offset=$1
+  echo "${offset}" > "${ACCESS_LOG_OFFSET}"
+}
+
+log_likely_rotated () {
+  # Log was likely rotated if the current offset is lower than the previous.
+  test "${CURRENT_OFFSET}" -lt "${PREVIOUS_OFFSET}"
+}
+
+log_updated () {
+  test "${CURRENT_OFFSET}" -gt "${PREVIOUS_OFFSET}"
+}
+
+tail_log () {
+  tail -c +"${STARTING_OFFSET}" "${ACCESS_LOG}"
+}
+
+# logtail!
+
+prep
+
+if ! offset_file_present; then
+  # Play it safe: save the offset and exit.
+  _stderr "Missing offset file. Saving for next run."
+  save_offset "${CURRENT_OFFSET}"
+  exit 0
+fi
+
+if [ "${CURRENT_OFFSET}" == "${PREVIOUS_OFFSET}" ]; then
+  _stderr "Current and previous offset match."
+  exit 0
+fi
+
+if log_likely_rotated; then
+  # Start from the beginning. We may lose some log lines but the blog is small
+  # and we can tolerate it.
+  STARTING_OFFSET=0
+fi
+
+if log_updated; then
+  # Increment the starting offset by one so we pick up where we left off.
+  STARTING_OFFSET=$(( PREVIOUS_OFFSET + 1 ))
+fi
+
+tail_log
+save_offset "${CURRENT_OFFSET}"
