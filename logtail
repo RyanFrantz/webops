@@ -17,6 +17,7 @@ ACCESS_LOG_OFFSET="${OFFSET_ROOT}/offset${NORMALIZED_ACCESS_LOG}"
 # Write to stderr.
 _stderr () {
   # ISO8601 timestamp, precision in seconds.
+  local _now
   _now=$(date -Iseconds)
   >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
 }
@@ -37,7 +38,7 @@ offset_file_present () {
 }
 
 _current_offset () {
-  offset=0
+  local offset=0
   if log_file_present; then
     offset="$(wc -c ${ACCESS_LOG} | awk '{print $1}')"
   fi
@@ -45,7 +46,7 @@ _current_offset () {
 }
 
 _previous_offset () {
-  offset=0
+  local offset=0
   if offset_file_present; then
     offset=$(tr -d '\n' < "${ACCESS_LOG_OFFSET}")
   fi
