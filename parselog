@@ -1,6 +1,7 @@
 #!/usr/local/bin/bash
 # FIXME: Replace me with #!/bin/bash
 # Thanks, Mac
+#!/bin/bash
 
 #
 # parselog - Parse useful data from our structured nginx access log.
@@ -12,21 +13,33 @@ _stdin=$(cat)
 readarray -t LOG_LINES < <(echo "${_stdin}")
 
 declare -A HTTP_STATUS # 2xx, 3xx, 4xx, etc.
+declare -A URIS        # Counts for each requested URI
 process_request () {
   local request
   request=$1
-  local status
+  local http_status
   # We need -e to properly set/detect exit status here.
-  if ! status=$(jq --exit-status '.status' <<< "${request}" | tr -d '"'); then
+  if ! http_status=$(jq --exit-status '.status' <<< "${request}" | tr -d '"'); then
     FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
     return
   fi
   # Count observed HTTP status codes.
-  if [ -z "${HTTP_STATUS[${status}]}" ]; then
+  if [ -z "${HTTP_STATUS[${http_status}]}" ]; then
     # First time we've seen this status.
-    HTTP_STATUS["${status}"]=1
+    HTTP_STATUS["${http_status}"]=1
   else
-    HTTP_STATUS["${status}"]=$(( ${HTTP_STATUS["${status}"]} + 1 ))
+    HTTP_STATUS["${http_status}"]=$(( ${HTTP_STATUS["${http_status}"]} + 1 ))
+  fi
+
+  local request_uri
+  if ! request_uri=$(jq --exit-status '.request_uri' <<< "${request}"); then
+    FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
+    return
+  fi
+  if [ -z "${URIS[${request_uri}]}" ]; then
+    URIS["${request_uri}"]=1
+  else
+    URIS["${request_uri}"]=$(( ${URIS["${request_uri}"]} + 1 ))
   fi
 
   # We passed muster.
@@ -47,9 +60,16 @@ done
 
 echo "Found ${#LOG_LINES[@]} total log lines!"
 echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
+
+echo -e "\t== HTTP Status Codes =="
 for code in "${!HTTP_STATUS[@]}"; do
-  printf "HTTP %s = %s\n" $code "${HTTP_STATUS[$code]}"
-done
+  printf "%s\tHTTP %s\n" "${HTTP_STATUS[$code]}" "${code}"
+done | sort -rn
+
+echo -e "\t== Request URIs =="
+for uri in "${!URIS[@]}"; do
+  printf "%s\t%s\n" "${URIS[$uri]}" "${uri}"
+done | sort -rn
 
 # TODO: Calculate req/s (assumes minutely runs)
 #  echo "scale=3;5/60" | bc
