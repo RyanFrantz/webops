@@ -1,0 +1,56 @@
+#!/usr/local/bin/bash
+# FIXME: Replace me with #!/bin/bash
+# Thanks, Mac
+
+#
+# parselog - Parse useful data from our structured nginx access log.
+#
+
+# cat reads on stdin, by default, and outputs to stdout. We use that behavior to
+# make this script accept piped and redirected output.
+_stdin=$(cat)
+readarray -t LOG_LINES < <(echo "${_stdin}")
+
+declare -A HTTP_STATUS # 2xx, 3xx, 4xx, etc.
+process_request () {
+  local request
+  request=$1
+  local status
+  # We need -e to properly set/detect exit status here.
+  if ! status=$(jq --exit-status '.status' <<< "${request}" | tr -d '"'); then
+    FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
+    return
+  fi
+  # Count observed HTTP status codes.
+  if [ -z "${HTTP_STATUS[${status}]}" ]; then
+    # First time we've seen this status.
+    HTTP_STATUS["${status}"]=1
+  else
+    HTTP_STATUS["${status}"]=$(( ${HTTP_STATUS["${status}"]} + 1 ))
+  fi
+
+  # We passed muster.
+  PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
+}
+
+PROCESSED_REQUESTS=0
+FAILED_PROCESSING=0
+for LINE in "${LOG_LINES[@]}"; do
+  # Test for JSONness.
+  if jq '.' <<< "${LINE}" > /dev/null 2>&1; then
+    process_request "${LINE}"
+  else
+    # Invalid input short-circuits immediately.
+    FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
+  fi
+done
+
+echo "Found ${#LOG_LINES[@]} total log lines!"
+echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
+for code in "${!HTTP_STATUS[@]}"; do
+  printf "HTTP %s = %s\n" $code "${HTTP_STATUS[$code]}"
+done
+
+# TODO: Calculate req/s (assumes minutely runs)
+#  echo "scale=3;5/60" | bc
+# .083
