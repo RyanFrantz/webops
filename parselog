@@ -85,10 +85,10 @@ for uri in "${!URIS[@]}"; do
   printf "%s\t%s\n" "${URIS[$uri]}" "${uri}"
 done | sort -rn
 
+TOTAL_LINES="${#LOG_LINES[@]}"
 echo -e "\n\t== Request Rate =="
 REQS_PER_SEC=$(echo "scale=2;${TOTAL_LINES}/60" | bc) # Assumes minutely runs.
 printf "http.requests_per_sec %s\n" "${REQS_PER_SEC}"
 
-TOTAL_LINES="${#LOG_LINES[@]}"
 echo "Found ${TOTAL_LINES} total log lines!"
 echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
