@@ -7,10 +7,25 @@
 # parselog - Parse useful data from our structured nginx access log.
 #
 
+# Write to stderr.
+_stderr () {
+  # ISO8601 timestamp, precision in seconds.
+  local _now
+  _now=$(date -Iseconds)
+  >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
+}
+
 # cat reads on stdin, by default, and outputs to stdout. We use that behavior to
 # make this script accept piped and redirected output.
 _stdin=$(cat)
 readarray -t LOG_LINES < <(echo "${_stdin}")
+
+FIRST_LINE="${LOG_LINES[0]}"
+# If we only have a single line and its length is 0, we likely received no input.
+if [[ "${#LOG_LINES[@]}" -eq "1" ]] && [[ "${#FIRST_LINE}" -eq "0" ]]; then
+  _stderr "No input received"
+  exit 0
+fi
 
 declare -A HTTP_STATUS # 2xx, 3xx, 4xx, etc.
 declare -A URIS        # Counts for each requested URI
@@ -50,7 +65,7 @@ PROCESSED_REQUESTS=0
 FAILED_PROCESSING=0
 for LINE in "${LOG_LINES[@]}"; do
   # Test for JSONness.
-  if jq '.' <<< "${LINE}" > /dev/null 2>&1; then
+  if jq -e '.' <<< "${LINE}" > /dev/null 2>&1; then
     process_request "${LINE}"
   else
     # Invalid input short-circuits immediately.
@@ -58,7 +73,8 @@ for LINE in "${LOG_LINES[@]}"; do
   fi
 done
 
-echo "Found ${#LOG_LINES[@]} total log lines!"
+TOTAL_LINES="${#LOG_LINES[@]}"
+echo "Found ${TOTAL_LINES} total log lines!"
 echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
 
 echo -e "\t== HTTP Status Codes =="
@@ -66,11 +82,11 @@ for code in "${!HTTP_STATUS[@]}"; do
   printf "%s\tHTTP %s\n" "${HTTP_STATUS[$code]}" "${code}"
 done | sort -rn
 
-echo -e "\t== Request URIs =="
+echo -e "\n\t== Request URIs =="
 for uri in "${!URIS[@]}"; do
   printf "%s\t%s\n" "${URIS[$uri]}" "${uri}"
 done | sort -rn
 
-# TODO: Calculate req/s (assumes minutely runs)
-#  echo "scale=3;5/60" | bc
-# .083
+echo -e "\n\t== Request Rate =="
+REQS_PER_SEC=$(echo "scale=2;${TOTAL_LINES}/60" | bc) # Assumes minutely runs.
+echo "${REQS_PER_SEC} req/s"
