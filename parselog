@@ -51,6 +51,8 @@ process_request () {
     FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
     return
   fi
+  # TODO: Filter requests by ^/hit prefix. Everything else can be considered
+  # noise. We'll still count it, though.
   if [ -z "${URIS[${request_uri}]}" ]; then
     URIS["${request_uri}"]=1
   else
@@ -73,13 +75,9 @@ for LINE in "${LOG_LINES[@]}"; do
   fi
 done
 
-TOTAL_LINES="${#LOG_LINES[@]}"
-echo "Found ${TOTAL_LINES} total log lines!"
-echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
-
 echo -e "\t== HTTP Status Codes =="
 for code in "${!HTTP_STATUS[@]}"; do
-  printf "%s\tHTTP %s\n" "${HTTP_STATUS[$code]}" "${code}"
+  printf "http.status.%s %s\n" "${code} ${HTTP_STATUS[$code]}"
 done | sort -rn
 
 echo -e "\n\t== Request URIs =="
@@ -89,4 +87,8 @@ done | sort -rn
 
 echo -e "\n\t== Request Rate =="
 REQS_PER_SEC=$(echo "scale=2;${TOTAL_LINES}/60" | bc) # Assumes minutely runs.
-echo "${REQS_PER_SEC} req/s"
+printf "http.requests_per_sec %s\n" "${REQS_PER_SEC}"
+
+TOTAL_LINES="${#LOG_LINES[@]}"
+echo "Found ${TOTAL_LINES} total log lines!"
+echo "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
