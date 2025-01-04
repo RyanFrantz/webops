@@ -1,0 +1,56 @@
+#!/usr/local/bin/bash
+# FIXME: Replace me with #!/bin/bash
+# Thanks, Mac
+#!/bin/bash
+
+#
+# storelog - Store nginx access logs to a database.
+#
+
+# Write to stderr.
+_stderr () {
+  # ISO8601 timestamp, precision in seconds.
+  local _now
+  _now=$(date -Iseconds)
+  >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
+}
+
+# cat reads on stdin, by default, and outputs to stdout. We use that behavior to
+# make this script accept piped and redirected output.
+_stdin=$(cat)
+readarray -t LOG_LINES < <(echo "${_stdin}")
+
+FIRST_LINE="${LOG_LINES[0]}"
+# If we only have a single line and its length is 0, we likely received no input.
+if [[ "${#LOG_LINES[@]}" -eq "1" ]] && [[ "${#FIRST_LINE}" -eq "0" ]]; then
+  _stderr "No input received"
+  exit 0
+fi
+
+declare -A LEGIT_URIS # Legitimate requests
+declare -A JUNK_URIS  # Everything else (e.g. scans)
+
+PROCESSED_REQUESTS=0
+FAILED_PROCESSING=0
+declare -a SQL_STMT
+SQL_STMT+=("BEGIN TRANSACTION;\n") # End with 'COMMIT;'
+for LINE in "${LOG_LINES[@]}"; do
+  # Test for JSONness.
+  if jq -e '.' <<< "${LINE}" > /dev/null 2>&1; then
+    _stmt="INSERT INTO logs (entry) VALUES ('${LINE}');\n"
+    SQL_STMT+=("${_stmt}")
+    PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
+  else
+    # Invalid input short-circuits immediately.
+    FAILED_PROCESSING=$(( FAILED_PROCESSING + 1 ))
+  fi
+done
+
+if [ "${#SQL_STMT[@]}" -gt "1" ]; then
+  SQL_STMT+=("COMMIT;\n")
+  echo -e "${SQL_STMT[*]}" | sqlite3 logs.db
+else
+  _stderr "No valid logs to store"
+fi
+
+_stderr "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
