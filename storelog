@@ -3,6 +3,8 @@
 # Thanks, Mac
 #!/bin/bash
 
+set -euo pipefail
+
 #
 # storelog - Store nginx access logs to a database.
 #
@@ -13,6 +15,27 @@ _stderr () {
   local _now
   _now=$(date -Iseconds)
   >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
+}
+
+DB_FILE="logs.db" # TODO: Fully-qualified path.
+
+# Table create statement.
+# rowid is implicit.
+# Store seconds since epoch as write timestamp.
+# `legit` is a boolean.
+read -d '' CREATE_STMT <<- END_CREATE
+  CREATE TABLE IF NOT EXISTS logs(
+    epoch INTEGER NOT NULL,
+    legit INTEGER NOT NULL DEFAULT 0,
+    json TEXT NOT NULL
+  );
+END_CREATE
+
+create_db () {
+  if [ ! -f "$DB_FILE" ]; then
+    touch "${DB_FILE}"
+  fi
+  echo "${CREATE_STMT}" | sqlite3 "${DB_FILE}"
 }
 
 # cat reads on stdin, by default, and outputs to stdout. We use that behavior to
@@ -29,6 +52,8 @@ fi
 
 PROCESSED_REQUESTS=0
 FAILED_PROCESSING=0
+
+create_db
 
 declare -a INSERT_LEGIT # Legitimate requests
 declare -a INSERT_JUNK  # Everything else (e.g. scans)
@@ -54,7 +79,7 @@ done
 if [ "${#INSERT_LEGIT[@]}" -gt "1" ]; then
   INSERT_LEGIT+=("COMMIT;\n")
   # Write to the database.
-  echo -e "${INSERT_LEGIT[*]}" | sqlite3 logs.db
+  echo -e "${INSERT_LEGIT[*]}" | sqlite3 "${DB_FILE}"
 else
   _stderr "No valid logs to store"
 fi
