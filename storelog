@@ -27,18 +27,23 @@ if [[ "${#LOG_LINES[@]}" -eq "1" ]] && [[ "${#FIRST_LINE}" -eq "0" ]]; then
   exit 0
 fi
 
-declare -A LEGIT_URIS # Legitimate requests
-declare -A JUNK_URIS  # Everything else (e.g. scans)
-
 PROCESSED_REQUESTS=0
 FAILED_PROCESSING=0
-declare -a SQL_STMT
-SQL_STMT+=("BEGIN TRANSACTION;\n") # End with 'COMMIT;'
+
+declare -a INSERT_LEGIT # Legitimate requests
+declare -a INSERT_JUNK  # Everything else (e.g. scans)
+INSERT_LEGIT+=("BEGIN TRANSACTION;\n")
+INSERT_JUNK+=("BEGIN TRANSACTION;\n")
 for LINE in "${LOG_LINES[@]}"; do
-  # Test for JSONness.
-  if jq -e '.' <<< "${LINE}" > /dev/null 2>&1; then
+  local request_uri
+  if request_uri=$(jq -e '.request_uri' <<< "${LINE}" > /dev/null 2>&1); then
     _stmt="INSERT INTO logs (entry) VALUES ('${LINE}');\n"
-    SQL_STMT+=("${_stmt}")
+    # FIXME: Add all entries to one table; delineate legit vs everything else
+    if [[ "${request_uri}" =~ ^/hit/ ]]; then
+      INSERT_LEGIT+=("${_stmt}")
+    else
+      INSERT_JUNK+=("${_stmt}")
+    fi
     PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
   else
     # Invalid input short-circuits immediately.
@@ -46,9 +51,10 @@ for LINE in "${LOG_LINES[@]}"; do
   fi
 done
 
-if [ "${#SQL_STMT[@]}" -gt "1" ]; then
-  SQL_STMT+=("COMMIT;\n")
-  echo -e "${SQL_STMT[*]}" | sqlite3 logs.db
+if [ "${#INSERT_LEGIT[@]}" -gt "1" ]; then
+  INSERT_LEGIT+=("COMMIT;\n")
+  # Write to the database.
+  echo -e "${INSERT_LEGIT[*]}" | sqlite3 logs.db
 else
   _stderr "No valid logs to store"
 fi
