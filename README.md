@@ -12,8 +12,30 @@ Querying the database for legitimate hits (i.e. not scanning requests) would
 look similar to:
 
 ```terminal
-sqlite> select epoch, json_extract(json, '$.request_uri'),
-   ...> json_extract(json, '$.host') from logs where legit=1;
-1736452039|/hit/posts/calculating-disk-iops.html|assets.ryanfrantz.com
-1736452039|/hit/posts/calculating-disk-iops.html|assets.ryanfrantz.com
+sqlite> select
+   ...> json_extract(json, '$.http_referer'),
+   ...> json_extract(json, '$.request_uri')
+   ...> from logs where legit=1;
+https://ryanfrantz.com/|/hit/cv/
+https://ryanfrantz.com/|/hit/
+```
+
+Total requests:
+
+```terminal
+sqlite> select count(*) from logs;
+2262
+```
+
+NOTE: The above value is for all time (at least as long as the database has
+existed). So many scanning requests.
+
+Another way to identify legitimate requests:
+
+```terminal
+sqlite> select json_extract(json, '$.request_uri')
+   ...> from logs
+   ...> where json_extract(json, '$.http_referer') = 'https://ryanfrantz.com/';
+/hit/cv/
+/hit/
 ```
