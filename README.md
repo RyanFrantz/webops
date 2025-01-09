@@ -39,3 +39,12 @@ sqlite> select json_extract(json, '$.request_uri')
 /hit/cv/
 /hit/
 ```
+
+### Storing Logs
+
+The following `crontab` entry causes nginx access logs to be stored every
+minute:
+
+```terminal
+* * * * * /usr/local/bin/logtail | /usr/local/bin/storelog > /var/log/ops/storelog 2>&1
+```
