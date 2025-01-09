@@ -53,7 +53,22 @@ Raw counts by remote address:
 193.34.212.75|1
 ```
 
-### Storing Logs
+Raw counts for legitimate requests to my site:
+
+```terminal
+sqlite> select
+   ...> json_extract(json, '$.request_uri') as uri,
+   ...> count(*) as _count
+   ...> from logs
+   ...> where legit=1
+   ...> group by uri;
+/hit/|1
+/hit/cv/|1
+```
+
+NOTE: I will strip the leading `/hit` prefix when using this output in a report.
+
+### Storing Logs Every Minute
 
 The following `crontab` entry causes nginx access logs to be stored every
 minute:
