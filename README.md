@@ -43,7 +43,12 @@ sqlite> select json_extract(json, '$.request_uri')
 Raw counts by remote address:
 
 ```terminal
- select json_extract(json, '$.remote_addr'), count(*) as _count from logs group by json_extract(json, '$.remote_addr') order by _count desc;
+sqlite> select
+   ...> json_extract(json, '$.remote_addr'),
+   ...> count(*) as _count
+   ...> from logs
+   ...> group by json_extract(json, '$.remote_addr')
+   ...> order by _count desc;
 94.72.105.70|6594
 92.255.57.58|2
 43.159.152.184|2
