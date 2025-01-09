@@ -40,6 +40,19 @@ sqlite> select json_extract(json, '$.request_uri')
 /hit/
 ```
 
+Raw counts by remote address:
+
+```terminal
+ select json_extract(json, '$.remote_addr'), count(*) as _count from logs group by json_extract(json, '$.remote_addr') order by _count desc;
+94.72.105.70|6594
+92.255.57.58|2
+43.159.152.184|2
+87.121.79.3|1
+87.120.125.13|1
+34.22.192.129|1
+193.34.212.75|1
+```
+
 ### Storing Logs
 
 The following `crontab` entry causes nginx access logs to be stored every
