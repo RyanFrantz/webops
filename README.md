@@ -1,5 +1,13 @@
 # webops
+
 Small web operations tools
+
+## `logtail`
+
+A basic implementation of a log tailer that tracks the last offset it has read.
+
+This is useful for capturing incremental chunks of content at regular intervals.
+This script is used as the beginning of a composable log ingestion pipeline.
 
 ## `storelog`
 
