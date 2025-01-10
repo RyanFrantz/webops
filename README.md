@@ -81,3 +81,27 @@ minute:
 ```terminal
 * * * * * /usr/local/bin/logtail | /usr/local/bin/storelog > /var/log/ops/storelog 2>&1
 ```
+
+## `webreport`
+
+Generates a simple, ordered report of the site's hits for today:
+
+```terminal
+# ./webreport
+        ===== WEB REPORT FOR 2025-01-10 =====
+9 /posts/legacy-supports-greenfield.html
+6 /
+5 /posts/untitled-scifi-serial.html
+2 /posts/augmenting-online-payments-with-ai.html
+2 /archive/
+1 /tags/
+1 /posts/work-is-messy.html
+1 /posts/untitled-scifi-serial-2.html
+1 /posts/senior-engs-dont-grow-on-trees.html
+1 /posts/note-taking.html
+1 /posts/nested-stars.html
+1 /posts/care-for-software.html
+1 /papers/2019/
+1 /papers/
+1 /contact/
+```

@@ -1,0 +1,38 @@
+#!/bin/bash
+
+#
+# webreport - Generate a report for "today's" traffic
+#
+
+# Assumptions around dates and times:
+# 1. We're running on a host that tells time in UTC.
+# 2. We have GNU `date`.
+
+TODAY=$(date +%Y-%m-%d) # 2025-01-10
+DATE_BEGIN="${TODAY}T00:00:00" # 2025-01-10T00:00:00
+EPOCH_BEGIN=$(date +%s --date="${DATE_BEGIN}") # 173646720
+
+DB_FILE="/var/lib/ops/logs.db"
+TABLE_NAME="logs"
+
+# Locate all legitimate hits for today.
+read -r -d '' SELECT_STMT <<- END_SELECT
+  SELECT
+  JSON_EXTRACT(json, '$.request_uri') AS uri,
+  COUNT(*) as _count
+  FROM ${TABLE_NAME}
+  WHERE legit=1 AND epoch >= ${EPOCH_BEGIN}
+  GROUP BY uri;
+END_SELECT
+
+readarray -t LEGIT_REQS \
+        < <(echo "${SELECT_STMT}" \
+        | sqlite3 "${DB_FILE}" \
+        | sed 's!^/hit!!') # Strip the /hit prefix.
+
+# Report!
+echo -e "\t===== WEB REPORT FOR ${TODAY} ====="
+for req in "${LEGIT_REQS[@]}"; do
+  IFS=\| read -r URI URI_COUNT <<< "${req}"
+  echo "${URI_COUNT} $URI"
+done | sort -rn
