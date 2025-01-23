@@ -37,6 +37,24 @@ create_db () {
   echo "${CREATE_STMT}" | sqlite3 "${DB_FILE}"
 }
 
+# Minor cleanup on characters that can negatively impact downstream loading or
+# parsing of JSON strings. Converts unwanted characters to their UTF-8 encoding.
+# We see lots of application scanning in the logs...
+preprocess () {
+  local line
+  line=$1
+  # ('curldr0p.exe');?> -> (%27curldr0p.exe%27);?>
+  # /index/\think/ -> /index/%5Cthink/
+  line=$( \
+    echo "${line}" \
+    | sed \
+      -e "s/'/%27/g" \
+      -e "s/\\\/%5C/g"
+  )
+
+  echo "${line}"
+}
+
 # cat reads on stdin, by default, and outputs to stdout. We use that behavior to
 # make this script accept piped and redirected output.
 _stdin=$(cat)
@@ -63,10 +81,7 @@ for LINE in "${LOG_LINES[@]}"; do
     if [[ "${request_uri}" =~ ^/hit/ ]]; then
       legit=1 # True
     fi
-    # Hack single quotes into hex.
-    # "...('curl%20-L...%2Fdr0p.exe');?>"
-    # "...(%27curl%20-L...%2Fdr0p.exe%27);?>"
-    LINE=$(echo "${LINE}" | sed "s/'/%27/g")
+    LINE=$(preprocess "${LINE}")
     _stmt="INSERT INTO ${TABLE_NAME} (epoch, legit, json) VALUES (${INSERT_DATE}, ${legit}, '${LINE}');\n"
     INSERT_STMT+=("${_stmt}")
     PROCESSED_REQUESTS=$(( PROCESSED_REQUESTS + 1 ))
