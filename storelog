@@ -44,11 +44,13 @@ preprocess () {
   local line
   line=$1
   # ('curldr0p.exe');?> -> (%27curldr0p.exe%27);?>
+  # /<?echo(md5(\"hi\")) -> /<?echo(md5(%5C%22hi%5C%22))
   # /index/\think/ -> /index/%5Cthink/
   line=$( \
     echo "${line}" \
     | sed \
       -e "s/'/%27/g" \
+      -e 's/\\\"/%5C%22/g' \
       -e "s/\\\/%5C/g"
   )
 

@@ -1,0 +1,6 @@
+#!/usr/local/bin/bash
+
+DB_FILE="/var/lib/ops/logs.db"
+TABLE_NAME="logs"
+
+
