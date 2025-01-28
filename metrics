@@ -1,6 +1,60 @@
-#!/usr/local/bin/bash
+#!/bin/bash
+
+#
+# metrics - Generate metrics to be scraped by Prometheus
+#
+
+# Assumptions around dates and times:
+# 1. We're running on a host that tells time in UTC.
+# 2. We have GNU `date`.
+
+epoch_begin() {
+  local today epoch_begin
+  today=$(date +%Y%m%d) # 2025-01-10
+  epoch_begin=$(date +%s --date="${today}") # 173646720
+  echo "${epoch_begin}"
+}
 
 DB_FILE="/var/lib/ops/logs.db"
 TABLE_NAME="logs"
 
+EPOCH_BEGIN=$(epoch_begin)
+# Locate all requests for today.
+read -r -d '' SELECT_STMT <<- END_SELECT
+  SELECT
+    JSON_EXTRACT(json, '$.status'),
+    JSON_EXTRACT(json, '$.uri'),
+    JSON_EXTRACT(json, '$.request_time'),
+    JSON_EXTRACT(json, '$.request_length'),
+    JSON_EXTRACT(json, '$.bytes_sent')
+  FROM ${TABLE_NAME}
+  WHERE epoch >= ${EPOCH_BEGIN}
+END_SELECT
 
+readarray -t REQS \
+        < <(echo "${SELECT_STMT}" \
+        | sqlite3 "${DB_FILE}")
+
+declare -A METRICS
+for request in "${REQS[@]}"; do
+  # sqlite3 will use a pipe as a delimiter
+  IFS=\| read status uri request_time request_length bytes_sent <<<$( \
+    echo $request)
+  hit="false"
+  if [[ "${uri}" =~ ^/hit/ ]]; then
+    hit="true"
+  fi
+  key="http_requests_total{status=\"${status}\",hit=\"${hit}\"}"
+
+  if [ -z "${METRICS[${key}]}" ]; then
+    # First time we've seen this key.
+    METRICS["${key}"]=1
+  else
+    METRICS["${key}"]=$(( ${METRICS["${key}"]} + 1 ))
+  fi
+done
+
+# TODO: Add HELP and TYPE definitions
+for key in "${!METRICS[@]}"; do
+  printf "%s %s\n" "${key} ${METRICS[$key]}"
+done
