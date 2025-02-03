@@ -9,13 +9,42 @@
 # 2. We have GNU `date`.
 
 epoch_begin() {
-  local today epoch_begin
-  today=$(date +%Y%m%d) # 2025-01-10
-  epoch_begin=$(date +%s --date="${today}") # 173646720
-  echo "${epoch_begin}"
+  #local today epoch_begin
+  #today=$(date +%Y%m%d) # 2025-01-10
+  #epoch_begin=$(date +%s --date="${today}") # 173646720
+  #echo "${epoch_begin}"
+  echo "1737672601"
 }
 
-DB_FILE="/var/lib/ops/logs.db"
+# Given a percentile target and an array of values, returns the value found at
+# that percentile.
+percentile() {
+  local target values sorted count idx
+  # Sort all values in ascending order.
+  target=$1
+  shift # Pop the first arg off the stack...
+  values=("$@") # ...and assign the remainder to an array.
+  # NOTE: [*] expands to a single word. This is different than [@] which expands
+  # each element as a separate word. Using [*] and IFS set to a newline, we can
+  # iterate over the array values as if they were a set of lines, so that
+  # `sort` can do its thing.
+  IFS=$'\n' sorted=( $(sort -n <<<"${values[*]}") ); unset IFS
+  count="${#sorted[@]}"
+  # NOTE: printf rounds to the nearest even number when a decimal is halfway
+  # between integers.
+  # $ printf "%.0f\n" 67.5 -> 68
+  # $ printf "%.0f\n" 66.5 -> 66
+  # While not related to printf, this bit of documented behavior in gawk helped
+  # me:
+  # https://www.gnu.org/software/gawk/manual/html_node/\
+  # Setting-the-rounding-mode.html#Setting-the-Rounding-Mode
+  idx=$(printf "%0.f" $(echo "scale=1; ($count * $target) / 100" | bc))
+  idx=$(( idx - 1 )) # bash arrays are zero-based
+  echo "${sorted[$idx]}"
+}
+
+#DB_FILE="/var/lib/ops/logs.db"
+DB_FILE="logs.db"
 TABLE_NAME="logs"
 
 EPOCH_BEGIN=$(epoch_begin)
@@ -35,7 +64,8 @@ readarray -t REQS \
         < <(echo "${SELECT_STMT}" \
         | sqlite3 "${DB_FILE}")
 
-declare -A METRICS
+declare -A REQ_COUNTERS
+declare -a REQ_TIME
 for request in "${REQS[@]}"; do
   # sqlite3 will use a pipe as a delimiter
   IFS=\| read status uri request_time request_length bytes_sent <<<$( \
@@ -45,16 +75,27 @@ for request in "${REQS[@]}"; do
     hit="true"
   fi
   key="http_requests_total{status=\"${status}\",hit=\"${hit}\"}"
+  REQ_TIME+=("${request_time}")
 
-  if [ -z "${METRICS[${key}]}" ]; then
+  if [ -z "${REQ_COUNTERS[${key}]}" ]; then
     # First time we've seen this key.
-    METRICS["${key}"]=1
+    REQ_COUNTERS["${key}"]=1
   else
-    METRICS["${key}"]=$(( ${METRICS["${key}"]} + 1 ))
+    REQ_COUNTERS["${key}"]=$(( ${REQ_COUNTERS["${key}"]} + 1 ))
   fi
 done
 
-# TODO: Add HELP and TYPE definitions
-for key in "${!METRICS[@]}"; do
-  printf "%s %s\n" "${key} ${METRICS[$key]}"
+echo "HELP http_requests_total HTTP request counts; organized by status."
+echo "TYPE http_requests_total counter"
+for key in "${!REQ_COUNTERS[@]}"; do
+  printf "%s %s\n" "${key} ${REQ_COUNTERS[$key]}"
 done
+
+perc95_req_time=$(percentile 95 "${REQ_TIME[@]}")
+perc99_req_time=$(percentile 99 "${REQ_TIME[@]}")
+max_req_time=$(percentile 100 "${REQ_TIME[@]}") # MAX
+echo "HELP TODO"
+echo "TYPE TODO"
+echo "http_request_duration_seconds{quantile=\"0.95\"} ${perc95_req_time}"
+echo "http_request_duration_seconds{quantile=\"0.99\"} ${perc99_req_time}"
+echo "http_request_duration_seconds{quantile=\"1.0\"} ${max_req_time}"
