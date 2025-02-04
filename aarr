@@ -1,0 +1,19 @@
+#!/bin/bash
+
+declare -a REQ_TIME
+REQ_TIME+=("3")
+REQ_TIME+=("5")
+REQ_TIME+=("7")
+REQ_TIME+=("1")
+REQ_TIME+=("10")
+REQ_TIME+=("20")
+REQ_TIME+=("2")
+#for time in "${REQ_TIME[@]}"; do
+#  echo "${time}"
+#done | sort -n
+IFS=$'\n' sorted=( $(sort -n <<<"${REQ_TIME[*]}") ); unset IFS
+
+last_idx=$(( ${#sorted[@]} - 1))
+echo "LAST: ${sorted[$last_idx]}"
+last_elem=${sorted[@]: - 1}
+echo "LAST: ${last_elem}"

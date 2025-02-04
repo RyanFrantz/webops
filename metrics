@@ -65,7 +65,7 @@ readarray -t REQS \
         | sqlite3 "${DB_FILE}")
 
 declare -A REQ_COUNTERS
-declare -a REQ_TIME
+declare -a REQ_TIME REQ_LENGTH BYTES_SENT
 for request in "${REQS[@]}"; do
   # sqlite3 will use a pipe as a delimiter
   IFS=\| read status uri request_time request_length bytes_sent <<<$( \
@@ -76,6 +76,8 @@ for request in "${REQS[@]}"; do
   fi
   key="http_requests_total{status=\"${status}\",hit=\"${hit}\"}"
   REQ_TIME+=("${request_time}")
+  REQ_LENGTH+=("${request_length}")
+  BYTES_SENT+=("${bytes_sent}")
 
   if [ -z "${REQ_COUNTERS[${key}]}" ]; then
     # First time we've seen this key.
@@ -99,3 +101,21 @@ echo "TYPE TODO"
 echo "http_request_duration_seconds{quantile=\"0.95\"} ${perc95_req_time}"
 echo "http_request_duration_seconds{quantile=\"0.99\"} ${perc99_req_time}"
 echo "http_request_duration_seconds{quantile=\"1.0\"} ${max_req_time}"
+
+perc95_req_length=$(percentile 95 "${REQ_LENGTH[@]}")
+perc99_req_length=$(percentile 99 "${REQ_LENGTH[@]}")
+max_req_length=$(percentile 100 "${REQ_LENGTH[@]}") # MAX
+echo "HELP TODO"
+echo "TYPE TODO"
+echo "http_request_length_bytes{quantile=\"0.95\"} ${perc95_req_length}"
+echo "http_request_length_bytes{quantile=\"0.99\"} ${perc99_req_length}"
+echo "http_request_length_bytes{quantile=\"1.0\"} ${max_req_length}"
+
+perc95_bytes_sent=$(percentile 95 "${BYTES_SENT[@]}")
+perc99_bytes_sent=$(percentile 99 "${BYTES_SENT[@]}")
+max_bytes_sent=$(percentile 100 "${BYTES_SENT[@]}") # MAX
+echo "HELP TODO"
+echo "TYPE TODO"
+echo "http_bytes_sent{quantile=\"0.95\"} ${perc95_bytes_sent}"
+echo "http_bytes_sent{quantile=\"0.99\"} ${perc99_bytes_sent}"
+echo "http_bytes_sent{quantile=\"1.0\"} ${max_bytes_sent}"
