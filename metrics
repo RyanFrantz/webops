@@ -49,6 +49,7 @@ TABLE_NAME="logs"
 
 EPOCH_BEGIN=$(epoch_begin)
 # Locate all requests for today.
+# TODO: Extract request_method.
 read -r -d '' SELECT_STMT <<- END_SELECT
   SELECT
     JSON_EXTRACT(json, '$.status'),
