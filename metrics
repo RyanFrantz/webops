@@ -7,13 +7,14 @@
 # Assumptions around dates and times:
 # 1. We're running on a host that tells time in UTC.
 # 2. We have GNU `date`.
+# 3. This script runs minutely.
 
-epoch_begin() {
-  #local today epoch_begin
-  #today=$(date +%Y%m%d) # 2025-01-10
-  #epoch_begin=$(date +%s --date="${today}") # 173646720
-  #echo "${epoch_begin}"
-  echo "1737672601"
+# Write to stderr.
+_stderr () {
+  # ISO8601 timestamp, precision in seconds.
+  local _now
+  _now=$(date -Iseconds)
+  >&2 echo "{\"time_iso8601\": \"${_now}\" \"msg\": \"$*\"}"
 }
 
 # Given a percentile target and an array of values, returns the value found at
@@ -47,7 +48,22 @@ percentile() {
 DB_FILE="logs.db"
 TABLE_NAME="logs"
 
-EPOCH_BEGIN=$(epoch_begin)
+# Test if we're receiving piped input (assumes its an epoch value).
+# If not, set the epoch to "now".
+if [ -p /dev/stdin ]; then
+  _stdin=$(cat)
+  readarray -r EPOCH < <(echo "${_stdin}")
+else
+  EPOCH="$(date +%s)"
+fi
+
+# If the piped input was 0, there is nothing to process.
+# If the piped input was empty, something is wrong.
+if [ "${EPOCH}" = "0" -o "${EPOCH}" = "" ]; then
+  _stderr "Nothing to process"
+  exit 0
+fi
+
 # Locate all requests for today.
 # TODO: Extract request_method.
 read -r -d '' SELECT_STMT <<- END_SELECT
@@ -58,7 +74,7 @@ read -r -d '' SELECT_STMT <<- END_SELECT
     JSON_EXTRACT(json, '$.request_length'),
     JSON_EXTRACT(json, '$.bytes_sent')
   FROM ${TABLE_NAME}
-  WHERE epoch >= ${EPOCH_BEGIN}
+  WHERE epoch >= ${EPOCH}
 END_SELECT
 
 readarray -t REQS \
