@@ -6,6 +6,12 @@ set -uo pipefail
 # storelog - Store nginx access logs to a database.
 #
 
+# Outputs a value representing the seconds since epoch, used as the insertion
+# date for all log entries. This output can be piped into other scripts that
+# query the log store.
+# The special value of "0" indicates no log lines were process and no work needs
+# to be done.
+
 # Write to stderr.
 _stderr () {
   # ISO8601 timestamp, precision in seconds.
@@ -66,6 +72,7 @@ FIRST_LINE="${LOG_LINES[0]}"
 # If we only have a single line and its length is 0, we likely received no input.
 if [[ "${#LOG_LINES[@]}" -eq "1" ]] && [[ "${#FIRST_LINE}" -eq "0" ]]; then
   _stderr "No input received"
+  echo "0" # Nothing to do.
   exit 0
 fi
 
@@ -102,3 +109,4 @@ else
 fi
 
 _stderr "Processed: ${PROCESSED_REQUESTS}  Failed: ${FAILED_PROCESSING}"
+echo "${INSERT_DATE}"
