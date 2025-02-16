@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# metrics - Generate metrics to be scraped by Prometheus
+# metrics - Generate metrics for Graphite, via StatsD
 #
 
 # Assumptions around dates and times:
@@ -44,15 +44,14 @@ percentile() {
   echo "${sorted[$idx]}"
 }
 
-#DB_FILE="/var/lib/ops/logs.db"
-DB_FILE="logs.db"
+DB_FILE="/var/lib/ops/logs.db"
 TABLE_NAME="logs"
 
 # Test if we're receiving piped input (assumes its an epoch value).
 # If not, set the epoch to "now".
 if [ -p /dev/stdin ]; then
   _stdin=$(cat)
-  readarray -r EPOCH < <(echo "${_stdin}")
+  read -r EPOCH < <(echo "${_stdin}")
 else
   EPOCH="$(date +%s)"
 fi
@@ -91,7 +90,8 @@ for request in "${REQS[@]}"; do
   if [[ "${uri}" =~ ^/hit/ ]]; then
     hit="true"
   fi
-  key="http_requests_total{status=\"${status}\",hit=\"${hit}\"}"
+  key="http.requests.status.${status}"
+  blog_hit="blog.hit.${hit}"
   REQ_TIME+=("${request_time}")
   REQ_LENGTH+=("${request_length}")
   BYTES_SENT+=("${bytes_sent}")
@@ -102,37 +102,47 @@ for request in "${REQS[@]}"; do
   else
     REQ_COUNTERS["${key}"]=$(( ${REQ_COUNTERS["${key}"]} + 1 ))
   fi
+
+  if [ -z "${REQ_COUNTERS[${blog_hit}]}" ]; then
+    # First time we've seen this key.
+    REQ_COUNTERS["${blog_hit}"]=1
+  else
+    REQ_COUNTERS["${blog_hit}"]=$(( ${REQ_COUNTERS["${blog_hit}"]} + 1 ))
+  fi
 done
 
-echo "HELP http_requests_total HTTP request counts; organized by status."
-echo "TYPE http_requests_total counter"
+# echo "test.deploys.foo:2|c" | nc -w 1 -u 127.0.0.1 8125
 for key in "${!REQ_COUNTERS[@]}"; do
-  printf "%s %s\n" "${key} ${REQ_COUNTERS[$key]}"
+  printf "%s:%s|c\n" "${key}" "${REQ_COUNTERS[$key]}" | \
+    nc -u 127.0.0.1 8125
 done
 
 perc95_req_time=$(percentile 95 "${REQ_TIME[@]}")
 perc99_req_time=$(percentile 99 "${REQ_TIME[@]}")
 max_req_time=$(percentile 100 "${REQ_TIME[@]}") # MAX
-echo "HELP TODO"
-echo "TYPE TODO"
-echo "http_request_duration_seconds{quantile=\"0.95\"} ${perc95_req_time}"
-echo "http_request_duration_seconds{quantile=\"0.99\"} ${perc99_req_time}"
-echo "http_request_duration_seconds{quantile=\"1.0\"} ${max_req_time}"
+echo "http.requests.duration_seconds.p95:${perc95_req_time}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.requests.duration_seconds.p99:${perc99_req_time}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.requests.duration_seconds.max:${max_req_time}|c" | \
+  nc -u 127.0.0.1 8125
 
 perc95_req_length=$(percentile 95 "${REQ_LENGTH[@]}")
 perc99_req_length=$(percentile 99 "${REQ_LENGTH[@]}")
 max_req_length=$(percentile 100 "${REQ_LENGTH[@]}") # MAX
-echo "HELP TODO"
-echo "TYPE TODO"
-echo "http_request_length_bytes{quantile=\"0.95\"} ${perc95_req_length}"
-echo "http_request_length_bytes{quantile=\"0.99\"} ${perc99_req_length}"
-echo "http_request_length_bytes{quantile=\"1.0\"} ${max_req_length}"
+echo "http.requests.length_bytes.p95:${perc95_req_length}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.requests.length_bytes.p99:${perc99_req_length}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.requests.length_bytes.max:${max_req_length}|c" | \
+  nc -u 127.0.0.1 8125
 
 perc95_bytes_sent=$(percentile 95 "${BYTES_SENT[@]}")
 perc99_bytes_sent=$(percentile 99 "${BYTES_SENT[@]}")
 max_bytes_sent=$(percentile 100 "${BYTES_SENT[@]}") # MAX
-echo "HELP TODO"
-echo "TYPE TODO"
-echo "http_bytes_sent{quantile=\"0.95\"} ${perc95_bytes_sent}"
-echo "http_bytes_sent{quantile=\"0.99\"} ${perc99_bytes_sent}"
-echo "http_bytes_sent{quantile=\"1.0\"} ${max_bytes_sent}"
+echo "http.bytes_sent.p95:${perc95_bytes_sent}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.bytes_sent.p99:${perc99_bytes_sent}|c" | \
+  nc -u 127.0.0.1 8125
+echo "http.bytes_sent.max:${max_bytes_sent}|c" | \
+  nc -u 127.0.0.1 8125
